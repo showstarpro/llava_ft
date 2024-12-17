@@ -2,16 +2,25 @@ from llava.model.builder import load_pretrained_model
 from llava.mm_utils import get_model_name_from_path
 from llava.eval.run_llava import eval_model
 import torch
+import os
 
-model_path = "liuhaotian/llava-v1.5-7b"
 
-tokenizer, model, image_processor, context_len = load_pretrained_model(
-    model_path=model_path,
-    model_base=None,
-    model_name=get_model_name_from_path(model_path)
-)
+# model_path = "/lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitb"
+# model_path = os.path.expanduser(model_path)
+# model_name = get_model_name_from_path(model_path)
 
-model_path = "liuhaotian/llava-v1.5-7b"
+# tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, None, model_name)
+
+
+# model_path = "liuhaotian/llava-v1.5-7b"
+
+# tokenizer, model, image_processor, context_len = load_pretrained_model(
+#     model_path=model_path,
+#     model_base=None,
+#     model_name=get_model_name_from_path(model_path)
+# )
+
+model_path = "/lpai/volumes/so-volume-ga/models/llava-v1.5-7b"
 prompt = "What are the things I should be cautious about when I visit here?"
 image_file = "https://llava-vl.github.io/static/images/view.jpg"
 

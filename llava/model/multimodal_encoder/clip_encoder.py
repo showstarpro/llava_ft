@@ -1,8 +1,25 @@
 import torch
 import torch.nn as nn
 
-from transformers import CLIPVisionModel, CLIPImageProcessor, CLIPVisionConfig
+from transformers import CLIPVisionModel, CLIPImageProcessor, CLIPVisionConfig, CLIPTextModel
 
+# import sys
+# import os
+# current_path = os.path.abspath(os.path.dirname(__file__))
+# sys.path.append(current_path+'/control_encoder.py')
+
+import importlib
+# # from https://stackoverflow.com/questions/67631/how-to-import-a-module-given-the-full-path
+# def _import_file(module_name, file_path, make_importable=False):
+#     spec = importlib.util.spec_from_file_location(module_name, file_path)
+#     module = importlib.util.module_from_spec(spec)
+#     spec.loader.exec_module(module)
+#     if make_importable:
+#         sys.modules[module_name] = module
+#     return module
+
+from .control_encoder import DiTVisionModel, conv_nd, zero_module
+import math
 
 class CLIPVisionTower(nn.Module):
     def __init__(self, vision_tower, args, delay_load=False):
@@ -25,34 +42,84 @@ class CLIPVisionTower(nn.Module):
         if self.is_loaded:
             print('{} is already loaded, `load_model` called again, skipping.'.format(self.vision_tower_name))
             return
-
+        
+        # here load the vision encoder, can change this 
         self.image_processor = CLIPImageProcessor.from_pretrained(self.vision_tower_name)
         self.vision_tower = CLIPVisionModel.from_pretrained(self.vision_tower_name, device_map=device_map)
         self.vision_tower.requires_grad_(False)
 
+
+        ### add dit block for  control #########
+        self.text_tower = CLIPTextModel.from_pretrained(self.vision_tower_name, device_map=device_map)
+        self.text_tower.requires_grad_(False)
+
+        self.con_vision_tower = DiTVisionModel.from_pretrained(self.vision_tower_name, device_map=device_map)
+        assert self.vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features == self.con_vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features
+        dims = self.vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features
+        self.zero_model = zero_module(conv_nd(2, dims, dims, 1, padding=0))
+
+        transformer_width = self.text_tower.text_model.encoder.layers[-1].mlp.fc2.out_features
+        self.projection = nn.Linear(transformer_width, dims, bias=True)
+
+        ########################################
+
         self.is_loaded = True
 
-    def feature_select(self, image_forward_outs):
+    def forward_features(self, images, prompts=None):
+        with torch.no_grad():
+            image_forward_outs = self.vision_tower(images, output_hidden_states=True)
+        
+        image_forward_outs_cont = self.con_vision_tower(images, prompts, output_hidden_states=True)
+
+        return image_forward_outs, image_forward_outs_cont
+
+    def feature_select(self, image_forward_outs, image_forward_outs_cont=None):
         image_features = image_forward_outs.hidden_states[self.select_layer]
+        image_features_cont = image_forward_outs_cont.hidden_states[self.select_layer]
         if self.select_feature == 'patch':
-            image_features = image_features[:, 1:]
+            with torch.no_grad():
+                image_features = image_features[:, 1:]
+
+            image_features_cont = image_features_cont[:, 1:]
+            B, L, D = image_features_cont.shape
+            image_features_cont = image_features_cont.reshape(B, int(math.sqrt(L)), int(math.sqrt(L)), D)
+            image_features_cont = image_features_cont.permute(0, 3, 1, 2)
+            image_features_cont = self.zero_model(image_features_cont)
+            image_features_cont = image_features_cont.permute(0, 2, 3, 1)
+            image_features_cont = image_features_cont.reshape(B, -1, D)
+
+            image_features = image_features + image_features_cont
+
         elif self.select_feature == 'cls_patch':
             image_features = image_features
         else:
             raise ValueError(f'Unexpected select feature: {self.select_feature}')
         return image_features
 
-    @torch.no_grad()
-    def forward(self, images):
+    # @torch.no_grad()
+    def forward(self, images, prompt=None):
+        ### add prompt for control
+        with torch.no_grad():
+                prompt_features = self.text_tower(prompt.to(device=self.device))
+        prompt_features = self.projection(prompt_features.pooler_output)
+
         if type(images) is list:
             image_features = []
             for image in images:
-                image_forward_out = self.vision_tower(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True)
-                image_feature = self.feature_select(image_forward_out).to(image.dtype)
+                # image_forward_out = self.vision_tower(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True)
+                # image_feature = self.feature_select(image_forward_out).to(image.dtype)
+
+                image_forward_outs, image_forward_outs_cont = self.forward_features(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), prompt_features)
+                image_features = self.feature_select(image_forward_outs, image_forward_outs_cont).to(images.dtype)
+
                 image_features.append(image_feature)
         else:
-            image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True)
-            image_features = self.feature_select(image_forward_outs).to(images.dtype)
+            # image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True)
+            # image_features = self.feature_select(image_forward_outs).to(images.dtype)
+        
+            image_forward_outs, image_forward_outs_cont = self.forward_features(images.to(device=self.device, dtype=self.dtype), prompt_features)
+            image_features = self.feature_select(image_forward_outs, image_forward_outs_cont).to(images.dtype)
+
 
         return image_features
 

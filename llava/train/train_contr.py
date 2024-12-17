@@ -410,30 +410,68 @@ def preprocess_llama_2(
         labels=targets,
     )
 
+###### add control prompt
+def tokenizer_prompt_token(prompt, tokenizer, image_token_index=IMAGE_TOKEN_INDEX, return_tensors=None):
+    prompt = prompt.replace('<image>', '').strip()
+    input_ids = tokenizer(prompt).input_ids
 
+    if return_tensors is not None:
+        if return_tensors == 'pt':
+            input_ids = torch.tensor(input_ids, dtype=torch.long)
+            L = input_ids.size(0)
+            if L <= tokenizer.model_max_length:
+                pad_length = tokenizer.model_max_length - L
+                input_ids = torch.nn.functional.pad(input_ids, (0, pad_length), 'constant', tokenizer.pad_token_id)
+
+            input_ids = input_ids[:tokenizer.model_max_length]
+            return input_ids
+        raise ValueError(f'Unsupported tensor type: {return_tensors}')
+    return input_ids
+
+
+###### add control prompt
 def preprocess_v1(
     sources,
     tokenizer: transformers.PreTrainedTokenizer,
+    tokenizer_prompt: transformers.PreTrainedTokenizer,
     has_image: bool = False
 ) -> Dict:
+    ### add control prompt
+    conv_prompt = conversation_lib.conv_vicuna_prompt.copy()
+    roles_prompt = {"human": conv_prompt.roles[0]}
+
     conv = conversation_lib.default_conversation.copy()
     roles = {"human": conv.roles[0], "gpt": conv.roles[1]}
 
     # Apply prompt templates
     conversations = []
+    conversations_prompt = [] ## add control prompt
     for i, source in enumerate(sources):
         if roles[source[0]["from"]] != conv.roles[0]:
             # Skip the first one if it is not from human
             source = source[1:]
 
         conv.messages = []
+        conv_prompt.messages = [] ## add control prompt
         for j, sentence in enumerate(source):
             role = roles[sentence["from"]]
             assert role == conv.roles[j % 2], f"{i}"
             conv.append_message(role, sentence["value"])
+
+            ## add control prompt
+            if sentence["from"] in roles_prompt:
+                role_prompt = roles_prompt[sentence["from"]]
+                conv_prompt.append_message(role_prompt, sentence["value"])
+
         conversations.append(conv.get_prompt())
+        
+        conversations_prompt.append(conv_prompt.get_prompt()) ## add control prompt
 
     # Tokenize conversations
+    
+    ##### add control prompt
+    prompt_input_ids = torch.stack([tokenizer_prompt_token(prompt, tokenizer_prompt, return_tensors='pt') for prompt in conversations_prompt], dim=0)
+
 
     if has_image:
         input_ids = torch.stack([tokenizer_image_token(prompt, tokenizer, return_tensors='pt') for prompt in conversations], dim=0)
@@ -494,32 +532,53 @@ def preprocess_v1(
     return dict(
         input_ids=input_ids,
         labels=targets,
+        prompt = prompt_input_ids, ### add control prompt
     )
-
+########################
 
 def preprocess_mpt(
     sources,
     tokenizer: transformers.PreTrainedTokenizer,
+    tokenizer_prompt: transformers.PreTrainedTokenizer,
     has_image: bool = False
 ) -> Dict:
+    ### add control prompt
+    conv_prompt = conversation_lib.conv_vicuna_prompt.copy()
+    roles_prompt = {"human": conv_prompt.roles[0]}
+    
     conv = conversation_lib.default_conversation.copy()
     roles = {"human": conv.roles[0], "gpt": conv.roles[1]}
 
     # Apply prompt templates
     conversations = []
+    conversations_prompt = [] ## add control prompt
     for i, source in enumerate(sources):
         if roles[source[0]["from"]] != conv.roles[0]:
             # Skip the first one if it is not from human
             source = source[1:]
 
         conv.messages = []
+        conv_prompt.messages = [] ## add control prompt
         for j, sentence in enumerate(source):
             role = roles[sentence["from"]]
             assert role == conv.roles[j % 2], f"{i}"
             conv.append_message(role, sentence["value"])
+            
+            ## add control prompt
+            if sentence["from"] in roles_prompt:
+                role_prompt = roles_prompt[sentence["from"]]
+                conv_prompt.append_message(role_prompt, sentence["value"])
+
         conversations.append(conv.get_prompt())
 
+        conversations_prompt.append(conv_prompt.get_prompt()) ## add control prompt
+
+
     # Tokenize conversations
+
+    ##### add control prompt
+    prompt_input_ids = torch.stack([tokenizer_prompt_token(prompt, tokenizer_prompt, return_tensors='pt') for prompt in conversations_prompt], dim=0)
+
 
     if has_image:
         input_ids = torch.stack([tokenizer_image_token(prompt, tokenizer, return_tensors='pt') for prompt in conversations], dim=0)
@@ -582,34 +641,45 @@ def preprocess_mpt(
     return dict(
         input_ids=input_ids,
         labels=targets,
+        prompt = prompt_input_ids, ### add control prompt
     )
 
 
 def preprocess_plain(
     sources: Sequence[str],
     tokenizer: transformers.PreTrainedTokenizer,
+    tokenizer_prompt: transformers.PreTrainedTokenizer = None,
 ) -> Dict:
     # add end signal and concatenate together
     conversations = []
+    conversations_prompt = [] ## add control prompt
     for source in sources:
         assert len(source) == 2
         assert DEFAULT_IMAGE_TOKEN in source[0]['value']
+        conversations_prompt.append(source[0]['value'])
         source[0]['value'] = DEFAULT_IMAGE_TOKEN
         conversation = source[0]['value'] + source[1]['value'] + conversation_lib.default_conversation.sep
         conversations.append(conversation)
+        
+    
     # tokenize conversations
+    ##### add control prompt
+    prompt_input_ids = torch.stack([tokenizer_prompt_token(prompt, tokenizer_prompt, return_tensors='pt') for prompt in conversations_prompt], dim=0)
+
+    
     input_ids = [tokenizer_image_token(prompt, tokenizer, return_tensors='pt') for prompt in conversations]
     targets = copy.deepcopy(input_ids)
     for target, source in zip(targets, sources):
         tokenized_len = len(tokenizer_image_token(source[0]['value'], tokenizer))
         target[:tokenized_len] = IGNORE_INDEX
 
-    return dict(input_ids=input_ids, labels=targets)
+    return dict(input_ids=input_ids, labels=targets, prompt = prompt_input_ids, ) ### add control prompt
 
 
 def preprocess(
     sources: Sequence[str],
     tokenizer: transformers.PreTrainedTokenizer,
+    tokenizer_prompt: transformers.PreTrainedTokenizer = None,
     has_image: bool = False
 ) -> Dict:
     """
@@ -620,11 +690,11 @@ def preprocess(
     4. Make a deepcopy as the target. Mask human words with IGNORE_INDEX.
     """
     if conversation_lib.default_conversation.sep_style == conversation_lib.SeparatorStyle.PLAIN:
-        return preprocess_plain(sources, tokenizer)
+        return preprocess_plain(sources, tokenizer, tokenizer_prompt)
     if conversation_lib.default_conversation.sep_style == conversation_lib.SeparatorStyle.LLAMA_2:
         return preprocess_llama_2(sources, tokenizer, has_image=has_image)
     if conversation_lib.default_conversation.version.startswith("v1"):
-        return preprocess_v1(sources, tokenizer, has_image=has_image)
+        return preprocess_v1(sources, tokenizer, tokenizer_prompt, has_image=has_image)
     if conversation_lib.default_conversation.version == "mpt":
         return preprocess_mpt(sources, tokenizer, has_image=has_image)
     # add end signal and concatenate together
@@ -660,6 +730,7 @@ class LazySupervisedDataset(Dataset):
 
     def __init__(self, data_path: str,
                  tokenizer: transformers.PreTrainedTokenizer,
+                 tokenizer_prompt: transformers.PreTrainedTokenizer,
                  data_args: DataArguments):
         super(LazySupervisedDataset, self).__init__()
         list_data_dict = json.load(open(data_path, "r"))
@@ -668,6 +739,7 @@ class LazySupervisedDataset(Dataset):
         self.tokenizer = tokenizer
         self.list_data_dict = list_data_dict
         self.data_args = data_args
+        self.tokenizer_prompt = tokenizer_prompt
 
     def __len__(self):
         return len(self.list_data_dict)
@@ -724,10 +796,12 @@ class LazySupervisedDataset(Dataset):
         data_dict = preprocess(
             sources,
             self.tokenizer,
+            self.tokenizer_prompt,
             has_image=('image' in self.list_data_dict[i]))
         if isinstance(i, int):
             data_dict = dict(input_ids=data_dict["input_ids"][0],
-                             labels=data_dict["labels"][0])
+                             labels=data_dict["labels"][0],
+                             prompt=data_dict["prompt"][0],)
 
         # image exist in the data
         if 'image' in self.list_data_dict[i]:
@@ -746,7 +820,7 @@ class DataCollatorForSupervisedDataset(object):
     tokenizer: transformers.PreTrainedTokenizer
 
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
-        input_ids, labels = tuple([instance[key] for instance in instances]
+        input_ids, labels  = tuple([instance[key] for instance in instances]
                                   for key in ("input_ids", "labels"))
         input_ids = torch.nn.utils.rnn.pad_sequence(
             input_ids,
@@ -763,6 +837,14 @@ class DataCollatorForSupervisedDataset(object):
             attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
         )
 
+        ##### 
+        if 'prompt' in instances[0]:
+            prompts = [instance['prompt'] for instance in instances]
+            if all(x is not None and x.shape == prompts[0].shape for x in prompts):
+                batch['prompts'] = torch.stack(prompts)
+            else:
+                batch['prompts'] = prompts
+
         if 'image' in instances[0]:
             images = [instance['image'] for instance in instances]
             if all(x is not None and x.shape == images[0].shape for x in images):
@@ -773,10 +855,12 @@ class DataCollatorForSupervisedDataset(object):
         return batch
 
 
-def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer,
+def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer, 
+                                tokenizer_prompt: transformers.PreTrainedTokenizer,
                                 data_args) -> Dict:
     """Make dataset and collator for supervised fine-tuning."""
     train_dataset = LazySupervisedDataset(tokenizer=tokenizer,
+                                tokenizer_prompt=tokenizer_prompt,
                                 data_path=data_args.data_path,
                                 data_args=data_args)
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
@@ -955,8 +1039,14 @@ def train(attn_implementation=None):
                 if hasattr(module, 'weight'):
                     if training_args.bf16 and module.weight.dtype == torch.float32:
                         module = module.to(torch.bfloat16)
-
+    
+    tokenizer_prompt = transformers.AutoTokenizer.from_pretrained(
+                        model_args.vision_tower,
+                        padding_side="right",
+                        use_fast=False,
+                        )
     data_module = make_supervised_data_module(tokenizer=tokenizer,
+                                              tokenizer_prompt=tokenizer_prompt, 
                                               data_args=data_args)
     trainer = LLaVATrainer(model=model,
                     tokenizer=tokenizer,
