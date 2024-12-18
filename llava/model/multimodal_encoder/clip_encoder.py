@@ -57,6 +57,7 @@ class CLIPVisionTower(nn.Module):
         self.text_tower = CLIPTextModel.from_pretrained(self.vision_tower_name, device_map=device_map)
         self.text_tower.requires_grad_(False)
 
+        print(self.vision_tower_contr_name)
         self.con_vision_tower = DiTVisionModel.from_pretrained(self.vision_tower_contr_name, device_map=device_map)
         assert self.vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features == self.con_vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features
         dims = self.vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features

@@ -196,7 +196,7 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
 
     #### save zero_model
     torch.save(trainer.model.model.vision_tower.zero_model.state_dict(), output_dir+'/con_vision_tower/zero_model.pth')
-
+    output_dir = output_dir+'/llava-1.5-7b'
 
     if getattr(trainer.args, "tune_mm_mlp_adapter", False):
         # Only save Adapter
