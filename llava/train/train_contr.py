@@ -64,7 +64,9 @@ class ModelArguments:
     mm_use_im_patch_token: bool = field(default=True)
     mm_patch_merge_type: Optional[str] = field(default='flat')
     mm_vision_select_feature: Optional[str] = field(default="patch")
-
+    vision_tower_contr: Optional[str] = field(default='/lpai/volumes/so-volume-ga/models/clip-vit-large-patch14-336')
+    projector_contr: Optional[str] = field(default=None)
+    zero_model: Optional[str] = field(default=None)
 
 @dataclass
 class DataArguments:
@@ -185,6 +187,16 @@ def find_all_linear_names(model):
 def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
                                    output_dir: str):
     """Collects the state dict and dump to disk."""
+    
+    #### save con_vision_tower
+    trainer.model.model.vision_tower.con_vision_tower.save_pretrained(output_dir+"/con_vision_tower")
+
+    #### save projector
+    torch.save(trainer.model.model.vision_tower.projector.state_dict(), output_dir+'/con_vision_tower/projector.pth')
+
+    #### save zero_model
+    torch.save(trainer.model.model.vision_tower.zero_model.state_dict(), output_dir+'/con_vision_tower/zero_model.pth')
+
 
     if getattr(trainer.args, "tune_mm_mlp_adapter", False):
         # Only save Adapter
@@ -1052,6 +1064,9 @@ def train(attn_implementation=None):
                     tokenizer=tokenizer,
                     args=training_args,
                     **data_module)
+
+    safe_save_model_for_hf_trainer(trainer=trainer,
+                                    output_dir=training_args.output_dir)
 
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
         trainer.train(resume_from_checkpoint=True)

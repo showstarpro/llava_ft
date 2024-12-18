@@ -504,9 +504,16 @@ def conv_nd(dims, *args, **kwargs):
 
 # clip_vitl_config = CLIPConfig(clip_vitl_json)
 # clip_vitl_vison_config = clip_vitl_config.vision_config
-# # dit_model = DiTVisionModel(clip_vitl_vison_config)
+# dit_model = DiTVisionModel(clip_vitl_vison_config)
 
 # dit_model = DiTVisionModel.from_pretrained('/lpai/volumes/so-volume-ga/models/clip-vit-large-patch14-336')
+# dit_model = dit_model.to(dtype=torch.bfloat16)
+
+# dit_model.save_pretrained('/lpai/test/dit_model_bf16')
+
+# dit_model = DiTVisionModel.from_pretrained('/lpai/test/con_vision_tower')
+# print(dit_model)
+
 # clip_tokenizer = transformers.AutoTokenizer.from_pretrained(
 #     '/lpai/volumes/so-volume-ga/models/clip-vit-large-patch14-336',
 #     padding_side="right",

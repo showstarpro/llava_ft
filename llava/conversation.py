@@ -404,6 +404,16 @@ conv_vicuna_prompt = Conversation(
     sep2="</s>",
 )
 
+conv_vicuna_v1_prompt = Conversation(
+    system="User concerns.",
+    roles=("USER",),
+    version="v1",
+    messages=(),
+    offset=0,
+    sep_style=SeparatorStyle.SINGLE,
+    sep=" ",
+    sep2="</s>",
+)
 
 if __name__ == "__main__":
     print(default_conversation.get_prompt())

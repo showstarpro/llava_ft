@@ -22,7 +22,7 @@ from .control_encoder import DiTVisionModel, conv_nd, zero_module
 import math
 
 class CLIPVisionTower(nn.Module):
-    def __init__(self, vision_tower, args, delay_load=False):
+    def __init__(self, vision_tower, vision_tower_contr, projector_contr, zero_model, args, delay_load=False):
         super().__init__()
 
         self.is_loaded = False
@@ -30,6 +30,10 @@ class CLIPVisionTower(nn.Module):
         self.vision_tower_name = vision_tower
         self.select_layer = args.mm_vision_select_layer
         self.select_feature = getattr(args, 'mm_vision_select_feature', 'patch')
+
+        self.vision_tower_contr_name = vision_tower_contr ## add control prompt 
+        self.projector_contr_name = projector_contr
+        self.zero_model_name = zero_model
 
         if not delay_load:
             self.load_model()
@@ -53,13 +57,21 @@ class CLIPVisionTower(nn.Module):
         self.text_tower = CLIPTextModel.from_pretrained(self.vision_tower_name, device_map=device_map)
         self.text_tower.requires_grad_(False)
 
-        self.con_vision_tower = DiTVisionModel.from_pretrained(self.vision_tower_name, device_map=device_map)
+        self.con_vision_tower = DiTVisionModel.from_pretrained(self.vision_tower_contr_name, device_map=device_map)
         assert self.vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features == self.con_vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features
         dims = self.vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features
-        self.zero_model = zero_module(conv_nd(2, dims, dims, 1, padding=0))
+        self.zero_model = zero_module(conv_nd(2, dims, dims, 1, padding=0)).to(self.con_vision_tower.device)
+        if self.zero_model_name is not None:
+            zero_model_weights = torch.load(self.zero_model_name, map_location='cpu')
+            self.zero_model.load_state_dict(zero_model_weights)
+
 
         transformer_width = self.text_tower.text_model.encoder.layers[-1].mlp.fc2.out_features
-        self.projection = nn.Linear(transformer_width, dims, bias=True)
+        self.projector = nn.Linear(transformer_width, dims, bias=True).to(self.con_vision_tower.device)
+        if self.projector_contr_name is not None:
+            projector_contr_weights = torch.load(self.projector_contr_name, map_location='cpu')
+
+            self.projector.load_state_dict(projector_contr_weights)
 
         ########################################
 
@@ -101,7 +113,7 @@ class CLIPVisionTower(nn.Module):
         ### add prompt for control
         with torch.no_grad():
                 prompt_features = self.text_tower(prompt.to(device=self.device))
-        prompt_features = self.projection(prompt_features.pooler_output)
+        prompt_features = self.projector(prompt_features.pooler_output)
 
         if type(images) is list:
             image_features = []
@@ -110,7 +122,7 @@ class CLIPVisionTower(nn.Module):
                 # image_feature = self.feature_select(image_forward_out).to(image.dtype)
 
                 image_forward_outs, image_forward_outs_cont = self.forward_features(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), prompt_features)
-                image_features = self.feature_select(image_forward_outs, image_forward_outs_cont).to(images.dtype)
+                image_feature = self.feature_select(image_forward_outs, image_forward_outs_cont).to(images.dtype)
 
                 image_features.append(image_feature)
         else:

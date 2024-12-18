@@ -203,6 +203,23 @@ def tokenizer_image_token(prompt, tokenizer, image_token_index=IMAGE_TOKEN_INDEX
         raise ValueError(f'Unsupported tensor type: {return_tensors}')
     return input_ids
 
+###### add control prompt
+def tokenizer_prompt_token(prompt, tokenizer, image_token_index=IMAGE_TOKEN_INDEX, return_tensors=None):
+    prompt = prompt.replace('<image>', '').strip()
+    input_ids = tokenizer(prompt).input_ids
+
+    if return_tensors is not None:
+        if return_tensors == 'pt':
+            input_ids = torch.tensor(input_ids, dtype=torch.long)
+            L = input_ids.size(0)
+            if L <= tokenizer.model_max_length:
+                pad_length = tokenizer.model_max_length - L
+                input_ids = torch.nn.functional.pad(input_ids, (0, pad_length), 'constant', tokenizer.pad_token_id)
+
+            input_ids = input_ids[:tokenizer.model_max_length]
+            return input_ids
+        raise ValueError(f'Unsupported tensor type: {return_tensors}')
+    return input_ids
 
 def get_model_name_from_path(model_path):
     model_path = model_path.strip("/")
