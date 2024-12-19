@@ -35,6 +35,25 @@ class CLIPVisionTower(nn.Module):
         self.projector_contr_name = projector_contr
         self.zero_model_name = zero_model
 
+        ########### new model #############
+        self.text_tower = CLIPTextModel.from_pretrained(self.vision_tower_name)
+
+        ### new control vision model
+        self.con_vision_tower = DiTVisionModel.from_pretrained(self.vision_tower_contr_name)
+        dims = self.vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features
+        self.zero_model = zero_module(conv_nd(2, dims, dims, 1, padding=0)).to(self.con_vision_tower.device)
+        if self.zero_model_name is not None:
+            zero_model_weights = torch.load(self.zero_model_name, map_location='cpu')
+            self.zero_model.load_state_dict(zero_model_weights)
+
+        transformer_width = self.text_tower.text_model.encoder.layers[-1].mlp.fc2.out_features
+        self.projector = nn.Linear(transformer_width, dims, bias=True).to(self.con_vision_tower.device)
+        if self.projector_contr_name is not None:
+            projector_contr_weights = torch.load(self.projector_contr_name, map_location='cpu')
+
+            self.projector.load_state_dict(projector_contr_weights)
+        ###############################
+
         if not delay_load:
             self.load_model()
         elif getattr(args, 'unfreeze_mm_vision_tower', False):
@@ -54,25 +73,8 @@ class CLIPVisionTower(nn.Module):
 
 
         ### add dit block for  control #########
-        self.text_tower = CLIPTextModel.from_pretrained(self.vision_tower_name, device_map=device_map)
+        
         self.text_tower.requires_grad_(False)
-
-        print(self.vision_tower_contr_name)
-        self.con_vision_tower = DiTVisionModel.from_pretrained(self.vision_tower_contr_name, device_map=device_map)
-        assert self.vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features == self.con_vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features
-        dims = self.vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features
-        self.zero_model = zero_module(conv_nd(2, dims, dims, 1, padding=0)).to(self.con_vision_tower.device)
-        if self.zero_model_name is not None:
-            zero_model_weights = torch.load(self.zero_model_name, map_location='cpu')
-            self.zero_model.load_state_dict(zero_model_weights)
-
-
-        transformer_width = self.text_tower.text_model.encoder.layers[-1].mlp.fc2.out_features
-        self.projector = nn.Linear(transformer_width, dims, bias=True).to(self.con_vision_tower.device)
-        if self.projector_contr_name is not None:
-            projector_contr_weights = torch.load(self.projector_contr_name, map_location='cpu')
-
-            self.projector.load_state_dict(projector_contr_weights)
 
         ########################################
 
