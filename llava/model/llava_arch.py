@@ -53,7 +53,11 @@ class LlavaMetaModel:
         pretrain_mm_mlp_adapter = model_args.pretrain_mm_mlp_adapter
         mm_patch_merge_type = model_args.mm_patch_merge_type
 
+        ### update the config of the llava
         self.config.mm_vision_tower = vision_tower
+        self.config.vision_tower_contr_name = model_args.vision_tower_contr ## add control prompt 
+        self.config.projector_contr_name = model_args.projector_contr
+        self.config.zero_model_name = model_args.zero_model
 
         if self.get_vision_tower() is None:
             vision_tower = build_vision_tower(model_args)
