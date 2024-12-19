@@ -496,6 +496,11 @@ def conv_nd(dims, *args, **kwargs):
     raise ValueError(f"unsupported dimensions: {dims}")
 
 
+zero_linear = (nn.Sequential(nn.LayerNorm(768), zero_module(nn.Linear(768, 768))))
+inputs = torch.randn(2, 196, 768)
+outs = zero_linear(inputs)
+print(outs)
+
 # import json
 # pth = '/lpai/volumes/so-volume-ga/models/clip-vit-large-patch14-336/config.json'
 

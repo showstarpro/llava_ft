@@ -41,7 +41,7 @@ class CLIPVisionTower(nn.Module):
         ### new control vision model
         self.con_vision_tower = DiTVisionModel.from_pretrained(self.vision_tower_contr_name)
         dims = self.con_vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features
-        self.zero_model = zero_module(conv_nd(2, dims, dims, 1, padding=0)).to(self.con_vision_tower.device)
+        self.zero_model = nn.Sequential(nn.LayerNorm(dims), zero_module(nn.Linear(dims, dims))).to(self.con_vision_tower.device) ###  zero-linear
         if self.zero_model_name is not None:
             zero_model_weights = torch.load(self.zero_model_name, map_location='cpu')
             self.zero_model.load_state_dict(zero_model_weights)
@@ -97,12 +97,7 @@ class CLIPVisionTower(nn.Module):
 
             image_features_cont = image_features_cont[:, 1:]
             B, L, D = image_features_cont.shape
-            image_features_cont = image_features_cont.reshape(B, int(math.sqrt(L)), int(math.sqrt(L)), D)
-            image_features_cont = image_features_cont.permute(0, 3, 1, 2)
             image_features_cont = self.zero_model(image_features_cont)
-            image_features_cont = image_features_cont.permute(0, 2, 3, 1)
-            image_features_cont = image_features_cont.reshape(B, -1, D)
-
             image_features = image_features + image_features_cont
 
         elif self.select_feature == 'cls_patch':
