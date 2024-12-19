@@ -67,6 +67,7 @@ class ModelArguments:
     vision_tower_contr: Optional[str] = field(default='/lpai/volumes/so-volume-ga/models/clip-vit-large-patch14-336')
     projector_contr: Optional[str] = field(default=None)
     zero_model: Optional[str] = field(default=None)
+    # tune_mm_contr: bool = field(default=True)
 
 @dataclass
 class DataArguments:
@@ -1023,6 +1024,13 @@ def train(attn_implementation=None):
         if model_args.tune_mm_mlp_adapter:
             model.requires_grad_(False)
             for p in model.get_model().mm_projector.parameters():
+                p.requires_grad = True
+        # if  model_args.tune_mm_contr:
+            for p in model.get_model().vision_tower.con_vision_tower.parameters():
+                p.requires_grad = True
+            for p in model.get_model().vision_tower.projector.parameters():
+                p.requires_grad = True
+            for p in model.get_model().vision_tower.zero_model.parameters():
                 p.requires_grad = True
 
         model.config.freeze_mm_mlp_adapter = training_args.freeze_mm_mlp_adapter
