@@ -9,12 +9,13 @@ from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_S
 from llava.conversation import conv_templates, SeparatorStyle
 from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
-from llava.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path
+from llava.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path, tokenizer_prompt_token
 from torch.utils.data import Dataset, DataLoader
+from llava import conversation as conversation_lib
 
 from PIL import Image
 import math
-
+import pdb
 
 def split_list(lst, n):
     """Split a list into n (roughly) equal-sized chunks"""
@@ -29,12 +30,13 @@ def get_chunk(lst, n, k):
 
 # Custom dataset class
 class CustomDataset(Dataset):
-    def __init__(self, questions, image_folder, tokenizer, image_processor, model_config):
+    def __init__(self, questions, image_folder, tokenizer, image_processor, model_config, prompt_tokenizer):
         self.questions = questions
         self.image_folder = image_folder
         self.tokenizer = tokenizer
         self.image_processor = image_processor
         self.model_config = model_config
+        self.prompt_tokenizer = prompt_tokenizer
 
     def __getitem__(self, index):
         line = self.questions[index]
@@ -50,28 +52,38 @@ class CustomDataset(Dataset):
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
 
+        conv_prompt = conversation_lib.conv_vicuna_v1_prompt.copy()
+        conv_prompt.append_message(conv_prompt.roles[0], line["text"])
+        conversations_prompt = conv_prompt.get_prompt()
+
         image = Image.open(os.path.join(self.image_folder, image_file)).convert('RGB')
         image_tensor = process_images([image], self.image_processor, self.model_config)[0]
 
+        
+
+        prompt_input_ids = tokenizer_prompt_token(conversations_prompt, self.prompt_tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt')
+
+
         input_ids = tokenizer_image_token(prompt, self.tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt')
 
-        return input_ids, image_tensor, image.size
+        return input_ids, image_tensor, image.size, prompt_input_ids
 
     def __len__(self):
         return len(self.questions)
 
 
 def collate_fn(batch):
-    input_ids, image_tensors, image_sizes = zip(*batch)
+    input_ids, image_tensors, image_sizes, prompt_input_ids = zip(*batch)
     input_ids = torch.stack(input_ids, dim=0)
     image_tensors = torch.stack(image_tensors, dim=0)
-    return input_ids, image_tensors, image_sizes
+    prompt_input_ids = torch.stack(prompt_input_ids, dim=0)
+    return input_ids, image_tensors, image_sizes, prompt_input_ids
 
 
 # DataLoader
-def create_data_loader(questions, image_folder, tokenizer, image_processor, model_config, batch_size=1, num_workers=4):
+def create_data_loader(questions, image_folder, tokenizer, image_processor, model_config, prompt_tokenizer, batch_size=1, num_workers=4):
     assert batch_size == 1, "batch_size must be 1"
-    dataset = CustomDataset(questions, image_folder, tokenizer, image_processor, model_config)
+    dataset = CustomDataset(questions, image_folder, tokenizer, image_processor, model_config, prompt_tokenizer)
     data_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, collate_fn=collate_fn)
     return data_loader
 
@@ -81,7 +93,7 @@ def eval_model(args):
     disable_torch_init()
     model_path = os.path.expanduser(args.model_path)
     model_name = get_model_name_from_path(model_path)
-    tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
+    tokenizer, model, image_processor, context_len, prompt_tokenizer = load_pretrained_model(model_path, args.model_base, model_name)
 
     questions = [json.loads(q) for q in open(os.path.expanduser(args.question_file), "r")]
     questions = get_chunk(questions, args.num_chunks, args.chunk_idx)
@@ -93,9 +105,9 @@ def eval_model(args):
         args.conv_mode = args.conv_mode + '_mmtag'
         print(f'It seems that this is a plain model, but it is not using a mmtag prompt, auto switching to {args.conv_mode}.')
 
-    data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config)
+    data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config, prompt_tokenizer)
 
-    for (input_ids, image_tensor, image_sizes), line in tqdm(zip(data_loader, questions), total=len(questions)):
+    for (input_ids, image_tensor, image_sizes, prompt_input_ids), line in tqdm(zip(data_loader, questions), total=len(questions)):
         idx = line["question_id"]
         cur_prompt = line["text"]
 
@@ -106,6 +118,7 @@ def eval_model(args):
                 input_ids,
                 images=image_tensor.to(dtype=torch.float16, device='cuda', non_blocking=True),
                 image_sizes=image_sizes,
+                prompts=prompt_input_ids,
                 do_sample=True if args.temperature > 0 else False,
                 temperature=args.temperature,
                 top_p=args.top_p,
@@ -127,11 +140,11 @@ def eval_model(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str, default="/lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitb")
+    parser.add_argument("--model-path", type=str, default="/lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitl-336-control-v3/llava-1.5-7b")
     parser.add_argument("--model-base", type=str, default=None)
-    parser.add_argument("--image-folder", type=str, default="/lpai/LLava/playground/data/eval/textvqa/train_images")
-    parser.add_argument("--question-file", type=str, default="/lpai/LLava/playground/data/eval/textvqa/llava_textvqa_val_v051_ocr.jsonl")
-    parser.add_argument("--answers-file", type=str, default="/lpai/LLava/playground/data/eval/textvqa/answers/llava-v1.5-7b-clip-vitl-336-control.jsonl")
+    parser.add_argument("--image-folder", type=str, default="/lpai/LLaVA/playground/data/eval/textvqa/train_images")
+    parser.add_argument("--question-file", type=str, default="/lpai/LLaVA/playground/data/eval/textvqa/llava_textvqa_val_v051_ocr.jsonl")
+    parser.add_argument("--answers-file", type=str, default="/lpai/LLaVA/playground/data/eval/textvqa/answers/llava-v1.5-7b-clip-vitl-336-control.jsonl")
     parser.add_argument("--conv-mode", type=str, default="vicuna_v1")
     parser.add_argument("--num-chunks", type=int, default=1)
     parser.add_argument("--chunk-idx", type=int, default=0)

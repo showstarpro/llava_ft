@@ -1,114 +1,118 @@
 import argparse
-import json
+import torch
 import os
-import re
-import random
+import json
+from tqdm import tqdm
+import shortuuid
+
+from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+from llava.conversation import conv_templates, SeparatorStyle
+from llava.model.builder import load_pretrained_model
+from llava.utils import disable_torch_init
+from llava.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path, tokenizer_prompt_token
+from llava import conversation as conversation_lib
+
+from PIL import Image
+import math
 
 
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--base-dir', type=str)
-    parser.add_argument('--result-file', type=str)
-    parser.add_argument('--output-file', type=str)
-    parser.add_argument('--output-result', type=str)
-    parser.add_argument('--split', type=str, default='test')
-    parser.add_argument('--options', type=list, default=["A", "B", "C", "D", "E"])
-    return parser.parse_args()
+def split_list(lst, n):
+    """Split a list into n (roughly) equal-sized chunks"""
+    chunk_size = math.ceil(len(lst) / n)  # integer division
+    return [lst[i:i+chunk_size] for i in range(0, len(lst), chunk_size)]
 
 
-def convert_caps(results):
-    fakecaps = []
-    for result in results:
-        image_id = result['question_id']
-        caption = result['text']
-        fakecaps.append({"image_id": int(image_id), "caption": caption})
-    return fakecaps
+def get_chunk(lst, n, k):
+    chunks = split_list(lst, n)
+    return chunks[k]
 
 
-def get_pred_idx(prediction, choices, options):
-    """
-    Get the index (e.g. 2) from the prediction (e.g. 'C')
-    """
-    if prediction in options[:len(choices)]:
-        return options.index(prediction)
-    else:
-        return -1
-        return random.choice(range(len(choices)))
+def eval_model(args):
+    # Model
+    disable_torch_init()
+    model_path = os.path.expanduser(args.model_path)
+    model_name = get_model_name_from_path(model_path)
+    tokenizer, model, image_processor, context_len, prompt_tokenizer = load_pretrained_model(model_path, args.model_base, model_name)
 
+    questions = json.load(open(os.path.expanduser(args.question_file), "r"))
+    questions = get_chunk(questions, args.num_chunks, args.chunk_idx)
+    answers_file = os.path.expanduser(args.answers_file)
+    os.makedirs(os.path.dirname(answers_file), exist_ok=True)
+    ans_file = open(answers_file, "w")
+    for i, line in enumerate(tqdm(questions)):
+        idx = line["id"]
+        question = line['conversations'][0]
+        qs = question['value'].replace('<image>', '').strip()
+        cur_prompt = qs
+
+        if 'image' in line:
+            image_file = line["image"]
+            image = Image.open(os.path.join(args.image_folder, image_file))
+            image_tensor = process_images([image], image_processor, model.config)[0]
+            images = image_tensor.unsqueeze(0).half().cuda()
+            image_sizes = [image.size]
+            if getattr(model.config, 'mm_use_im_start_end', False):
+                qs = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + qs
+            else:
+                qs = DEFAULT_IMAGE_TOKEN + '\n' + qs
+            cur_prompt = '<image>' + '\n' + cur_prompt
+        else:
+            images = None
+            image_sizes = None
+
+        if args.single_pred_prompt:
+            qs = qs + '\n' + "Answer with the option's letter from the given choices directly."
+            cur_prompt = cur_prompt + '\n' + "Answer with the option's letter from the given choices directly."
+
+        conv = conv_templates[args.conv_mode].copy()
+        conv.append_message(conv.roles[0], qs)
+        conv.append_message(conv.roles[1], None)
+        prompt = conv.get_prompt()
+
+        conv_prompt = conversation_lib.conv_vicuna_v1_prompt.copy()
+        conv_prompt.append_message(conv_prompt.roles[0], question['value'].replace('<image>', '').strip())
+        conversations_prompt = conv_prompt.get_prompt()
+        prompt_input_ids = tokenizer_prompt_token(conversations_prompt, prompt_tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
+
+        input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
+
+        with torch.inference_mode():
+            output_ids = model.generate(
+                input_ids,
+                images=images,
+                image_sizes=image_sizes,
+                prompts=prompt_input_ids,
+                do_sample=True if args.temperature > 0 else False,
+                temperature=args.temperature,
+                max_new_tokens=1024,
+                use_cache=True,
+            )
+
+        outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+
+        ans_id = shortuuid.uuid()
+        ans_file.write(json.dumps({"question_id": idx,
+                                   "prompt": cur_prompt,
+                                   "text": outputs,
+                                   "answer_id": ans_id,
+                                   "model_id": model_name,
+                                   "metadata": {}}) + "\n")
+        ans_file.flush()
+    ans_file.close()
 
 if __name__ == "__main__":
-    args = get_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-path", type=str, default="/lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitl-336-control-v3/llava-1.5-7b")
+    parser.add_argument("--model-base", type=str, default=None)
+    parser.add_argument("--image-folder", type=str, default="/lpai/LLaVA/playground/data/eval/scienceqa/images/test")
+    parser.add_argument("--question-file", type=str, default="/lpai/LLaVA/playground/data/eval/scienceqa/llava_test_CQM-A.json")
+    parser.add_argument("--answers-file", type=str, default="/lpai/LLaVA/playground/data/eval/scienceqa/llava-v1.5-7b-clip-vitl-336-control-v3.jsonl")
+    parser.add_argument("--conv-mode", type=str, default="vicuna_v1")
+    parser.add_argument("--num-chunks", type=int, default=1)
+    parser.add_argument("--chunk-idx", type=int, default=0)
+    parser.add_argument("--temperature", type=float, default=0)
+    parser.add_argument("--answer-prompter", action="store_true")
+    parser.add_argument("--single-pred-prompt", action="store_true")
+    args = parser.parse_args()
 
-    base_dir = args.base_dir
-    split_indices = json.load(open(os.path.join(base_dir, "pid_splits.json")))[args.split]
-    problems = json.load(open(os.path.join(base_dir, "problems.json")))
-    predictions = [json.loads(line) for line in open(args.result_file)]
-    predictions = {pred['question_id']: pred for pred in predictions}
-    split_problems = {idx: problems[idx] for idx in split_indices}
-
-    results = {'correct': [], 'incorrect': []}
-    sqa_results = {}
-    sqa_results['acc'] = None
-    sqa_results['correct'] = None
-    sqa_results['count'] = None
-    sqa_results['results'] = {}
-    sqa_results['outputs'] = {}
-
-    for prob_id, prob in split_problems.items():
-        if prob_id not in predictions:
-            pred = {'text': 'FAILED', 'prompt': 'Unknown'}
-            pred_text = 'FAILED'
-        else:
-            pred = predictions[prob_id]
-            pred_text = pred['text']
-
-        if pred_text in args.options:
-            answer = pred_text
-        elif len(pred_text) >= 3 and pred_text[0] in args.options and pred_text[1:3] == ". ":
-            answer = pred_text[0]
-        else:
-            pattern = re.compile(r'The answer is ([A-Z]).')
-            res = pattern.findall(pred_text)
-            if len(res) == 1:
-                answer = res[0]  # 'A', 'B', ...
-            else:
-                answer = "FAILED"
-
-        pred_idx = get_pred_idx(answer, prob['choices'], args.options)
-
-        analysis = {
-            'question_id': prob_id,
-            'parsed_ans': answer,
-            'ground_truth': args.options[prob['answer']],
-            'question': pred['prompt'],
-            'pred': pred_text,
-            'is_multimodal': '<image>' in pred['prompt'],
-        }
-
-        sqa_results['results'][prob_id] = get_pred_idx(answer, prob['choices'], args.options)
-        sqa_results['outputs'][prob_id] = pred_text
-
-        if pred_idx == prob['answer']:
-            results['correct'].append(analysis)
-        else:
-            results['incorrect'].append(analysis)
-
-    correct = len(results['correct'])
-    total = len(results['correct']) + len(results['incorrect'])
-
-    ###### IMG ######
-    multimodal_correct = len([x for x in results['correct'] if x['is_multimodal']])
-    multimodal_incorrect = len([x for x in results['incorrect'] if x['is_multimodal']])
-    multimodal_total = multimodal_correct + multimodal_incorrect
-    ###### IMG ######
-
-    print(f'Total: {total}, Correct: {correct}, Accuracy: {correct / total * 100:.2f}%, IMG-Accuracy: {multimodal_correct / multimodal_total * 100:.2f}%')
-
-    sqa_results['acc'] = correct / total * 100
-    sqa_results['correct'] = correct
-    sqa_results['count'] = total
-
-    with open(args.output_file, 'w') as f:
-        json.dump(results, f, indent=2)
-    with open(args.output_result, 'w') as f:
-        json.dump(sqa_results, f, indent=2)
+    eval_model(args)
