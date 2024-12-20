@@ -190,13 +190,18 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
     """Collects the state dict and dump to disk."""
     
     #### save con_vision_tower
-    trainer.model.model.vision_tower.con_vision_tower.save_pretrained(output_dir+"/con_vision_tower")
+    con_vision_tower = copy.deepcopy(trainer.model.model.vision_tower.con_vision_tower)
+    con_vision_tower.save_pretrained(output_dir+"/con_vision_tower")
 
     #### save projector
-    torch.save(trainer.model.model.vision_tower.projector.state_dict(), output_dir+'/con_vision_tower/projector.pth')
+    checkpoint_dir = output_dir+'/checkpoint'
+    if not os.path.exists(checkpoint_dir):
+        # 如果目录不存在，创建目录
+        os.makedirs(checkpoint_dir)
+    torch.save(trainer.model.model.vision_tower.projector.state_dict(), os.path.join(checkpoint_dir, 'projector.pth'))
 
-    #### save zero_model
-    torch.save(trainer.model.model.vision_tower.zero_model.state_dict(), output_dir+'/con_vision_tower/zero_model.pth')
+    #### save zero_model os.path.join(checkpoint_dir, 'zero_model.pth')
+    torch.save(trainer.model.model.vision_tower.zero_model.state_dict(), os.path.join(checkpoint_dir, 'zero_model.pth'))
     output_dir = output_dir+'/llava-1.5-7b'
 
     if getattr(trainer.args, "tune_mm_mlp_adapter", False):
@@ -1072,6 +1077,9 @@ def train(attn_implementation=None):
                     tokenizer=tokenizer,
                     args=training_args,
                     **data_module)
+    safe_save_model_for_hf_trainer(trainer=trainer,
+                                       output_dir=training_args.output_dir)
+    return 
 
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
         trainer.train(resume_from_checkpoint=True)
