@@ -18,7 +18,7 @@ import importlib
 #         sys.modules[module_name] = module
 #     return module
 
-from .control_encoder import DiTVisionModel, conv_nd, zero_module
+from .control_encoder import DiTVisionModel, conv_nd, zero_module, zero_linear
 import math
 
 class CLIPVisionTower(nn.Module):
@@ -41,7 +41,7 @@ class CLIPVisionTower(nn.Module):
         ### new control vision model
         self.con_vision_tower = DiTVisionModel.from_pretrained(self.vision_tower_contr_name)
         dims = self.con_vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features
-        self.zero_model = nn.Sequential(nn.LayerNorm(dims), zero_module(nn.Linear(dims, dims))).to(self.con_vision_tower.device) ###  zero-linear
+        self.zero_model = zero_linear(nn.Linear(2 * dims, dims)).to(self.con_vision_tower.device) ###  zero-linear
         if self.zero_model_name is not None:
             zero_model_weights = torch.load(self.zero_model_name, map_location='cpu')
             self.zero_model.load_state_dict(zero_model_weights)
@@ -98,8 +98,8 @@ class CLIPVisionTower(nn.Module):
 
             image_features_cont = image_features_cont[:, 1:]
             B, L, D = image_features_cont.shape
-            image_features_cont = self.zero_model(image_features_cont)
-            image_features = image_features + image_features_cont
+            image_features_cont = torch.cat([image_features, image_features_cont], dim=-1)
+            image_features = self.zero_model(image_features_cont)
 
         elif self.select_feature == 'cls_patch':
             image_features = image_features

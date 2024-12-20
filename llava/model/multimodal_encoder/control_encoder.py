@@ -495,6 +495,19 @@ def conv_nd(dims, *args, **kwargs):
         return nn.Conv3d(*args, **kwargs)
     raise ValueError(f"unsupported dimensions: {dims}")
 
+def zero_linear(module):
+    """
+    Zero init the nn.Linear and return it.
+    """
+    weight = module.weight
+    out_dim, in_dim = weight.shape
+    assert out_dim*2 == in_dim
+    weight = torch.cat([torch.eye(out_dim), torch.zeros(out_dim, out_dim)], dim=1)
+    bias = torch.zeros(out_dim)
+    module.weight = torch.nn.Parameter(weight)
+    module.bias = torch.nn.Parameter(bias)
+    return module
+
 
 # zero_linear = (nn.Sequential(nn.LayerNorm(768), zero_module(nn.Linear(768, 768))))
 # inputs = torch.randn(2, 196, 768)
