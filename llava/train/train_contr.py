@@ -191,10 +191,10 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
     
     #### save con_vision_tower
     con_vision_tower = trainer.model.model.vision_tower.con_vision_tower
-    if isinstance(con_vision_tower, ZeROOrderedDict):
-        print("con_vision_tower 是 ZeROOrderedDict 类型")
-        con_vision_tower = ZeROOrderedDict(parent_module=trainer.model.model.vision_tower.con_vision_tower)
-    con_vision_tower = copy.deepcopy(con_vision_tower)
+    # if isinstance(con_vision_tower, ZeROOrderedDict):
+    #     print("con_vision_tower 是 ZeROOrderedDict 类型")
+    #     con_vision_tower = ZeROOrderedDict(parent_module=trainer.model.model.vision_tower.con_vision_tower)
+    # con_vision_tower = copy.deepcopy(con_vision_tower)
     con_vision_tower.save_pretrained(output_dir+"/con_vision_tower")
 
     #### save projector
