@@ -187,6 +187,12 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
     """Collects the state dict and dump to disk."""
 
     if getattr(trainer.args, "tune_mm_mlp_adapter", False):
+        #### save con_vision_tower
+        vision_tower = trainer.model.model.vision_tower.vision_tower
+        vision_tower = copy.deepcopy(vision_tower)
+        vision_tower.save_pretrained(output_dir+"/vision_tower")
+
+        output_dir = output_dir+'/checkpoint'
         # Only save Adapter
         keys_to_match = ['mm_projector']
         if getattr(trainer.args, "use_im_start_end", False):
@@ -927,6 +933,8 @@ def train(attn_implementation=None):
         if model_args.tune_mm_mlp_adapter:
             model.requires_grad_(False)
             for p in model.get_model().mm_projector.parameters():
+                p.requires_grad = True
+            for p in model.get_model().vision_tower.vision_tower.parameters():
                 p.requires_grad = True
 
         model.config.freeze_mm_mlp_adapter = training_args.freeze_mm_mlp_adapter

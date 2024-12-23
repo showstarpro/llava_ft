@@ -1,18 +1,21 @@
 pth=/lpai/volumes/so-volume-ga/models/llava-v1.5-7b
 
-python -m llava.eval.model_vqa_loader \
+SPLIT="mmbench_dev_cn_20231003"
+
+python -m llava.eval.model_vqa_mmbench \
     --model-path $pth \
-    --question-file ./playground/data/eval/MME/llava_mme.jsonl \
-    --image-folder ./playground/data/eval/MME/MME_Benchmark_release_version \
-    --answers-file ./playground/data/eval/MME/answers/llava-v1.5-7b.jsonl \
+    --question-file ./playground/data/eval/mmbench_cn/$SPLIT.tsv \
+    --answers-file ./playground/data/eval/mmbench_cn/answers/$SPLIT/llava-v1.5-7b.jsonl \
+    --lang cn \
+    --single-pred-prompt \
     --temperature 0 \
     --conv-mode vicuna_v1
 
-cd ./playground/data/eval/MME
+mkdir -p playground/data/eval/mmbench/answers_upload/$SPLIT
 
-python convert_answer_to_mme.py --experiment llava-v1.5-7b
-
-cd eval_tool
-
-python calculation.py --results_dir answers/llava-v1.5-7b
+python scripts/convert_mmbench_for_submission.py \
+    --annotation-file ./playground/data/eval/mmbench_cn/$SPLIT.tsv \
+    --result-dir ./playground/data/eval/mmbench_cn/answers/$SPLIT \
+    --upload-dir ./playground/data/eval/mmbench_cn/answers_upload/$SPLIT \
+    --experiment llava-v1.5-7b
 
