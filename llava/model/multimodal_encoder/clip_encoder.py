@@ -70,11 +70,16 @@ class CLIPVisionTower(nn.Module):
         self.image_processor = CLIPImageProcessor.from_pretrained(self.vision_tower_name)
         self.vision_tower = CLIPVisionModel.from_pretrained(self.vision_tower_name, device_map=device_map)
         self.vision_tower.requires_grad_(False)
+        self.vision_tower.to(self.device)
 
 
         ### add dit block for  control #########
         
         self.text_tower.requires_grad_(False)
+        self.text_tower.to(self.vision_tower.device)
+        self.con_vision_tower.to(self.vision_tower.device)
+        self.zero_model.to(self.vision_tower.device)
+        self.projector.to(self.vision_tower.device)
 
         ########################################
 
@@ -110,7 +115,9 @@ class CLIPVisionTower(nn.Module):
     def forward(self, images, prompt=None):
         ### add prompt for control
         with torch.no_grad():
-                prompt_features = self.text_tower(prompt.to(device=self.device))
+                prompt = prompt.to(self.vision_tower.device)
+                self.text_tower = self.text_tower.to(self.vision_tower.device)
+                prompt_features = self.text_tower(prompt)
         prompt_features = self.projector(prompt_features.pooler_output)
 
         if type(images) is list:
