@@ -9,10 +9,14 @@ from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_S
 from llava.conversation import conv_templates, SeparatorStyle
 from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
-from llava.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path
+from llava.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path, tokenizer_prompt_token
+from llava import conversation as conversation_lib
 
 from PIL import Image
 import math
+
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def split_list(lst, n):
@@ -31,7 +35,7 @@ def eval_model(args):
     disable_torch_init()
     model_path = os.path.expanduser(args.model_path)
     model_name = get_model_name_from_path(model_path)
-    tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
+    tokenizer, model, image_processor, context_len, prompt_tokenizer = load_pretrained_model(model_path, args.model_base, model_name)
 
     questions = json.load(open(os.path.expanduser(args.question_file), "r"))
     questions = get_chunk(questions, args.num_chunks, args.chunk_idx)
@@ -68,6 +72,11 @@ def eval_model(args):
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
 
+        conv_prompt = conversation_lib.conv_vicuna_v1_prompt.copy()
+        conv_prompt.append_message(conv_prompt.roles[0], question['value'].replace('<image>', '').strip())
+        conversations_prompt = conv_prompt.get_prompt()
+        prompt_input_ids = tokenizer_prompt_token(conversations_prompt, prompt_tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
+
         input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
 
         with torch.inference_mode():
@@ -75,6 +84,7 @@ def eval_model(args):
                 input_ids,
                 images=images,
                 image_sizes=image_sizes,
+                prompts=prompt_input_ids,
                 do_sample=True if args.temperature > 0 else False,
                 temperature=args.temperature,
                 max_new_tokens=1024,
@@ -95,15 +105,15 @@ def eval_model(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str, default="facebook/opt-350m")
+    parser.add_argument("--model-path", type=str, default="/lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitl-336-control-v12")
     parser.add_argument("--model-base", type=str, default=None)
-    parser.add_argument("--image-folder", type=str, default="")
-    parser.add_argument("--question-file", type=str, default="tables/question.json")
-    parser.add_argument("--answers-file", type=str, default="answer.jsonl")
-    parser.add_argument("--conv-mode", type=str, default="llava_v0")
+    parser.add_argument("--image-folder", type=str, default="/lpai/LLaVA/playground/data/eval/scienceqa/images/test")
+    parser.add_argument("--question-file", type=str, default="/lpai/LLaVA/playground/data/eval/scienceqa/llava_test_CQM-A.json")
+    parser.add_argument("--answers-file", type=str, default="/lpai/LLaVA/playground/data/eval/scienceqa/llava-v1.5-7b-clip-vitl-336-control-v12.jsonl")
+    parser.add_argument("--conv-mode", type=str, default="vicuna_v1")
     parser.add_argument("--num-chunks", type=int, default=1)
     parser.add_argument("--chunk-idx", type=int, default=0)
-    parser.add_argument("--temperature", type=float, default=0.2)
+    parser.add_argument("--temperature", type=float, default=0)
     parser.add_argument("--answer-prompter", action="store_true")
     parser.add_argument("--single-pred-prompt", action="store_true")
     args = parser.parse_args()
