@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.cuda.amp import autocast
 
 from transformers import CLIPVisionModel, CLIPImageProcessor, CLIPVisionConfig, CLIPTextModel
 
@@ -82,29 +83,31 @@ class CLIPVisionTower(nn.Module):
         self.is_loaded = True
 
     def forward_features(self, images, prompts=None):
-        with torch.no_grad():
-            image_forward_outs = self.vision_tower(images, output_hidden_states=True)
-        
-        image_forward_outs_cont = self.con_vision_tower(images, prompts, output_hidden_states=True)
+        with autocast():
+            with torch.no_grad():
+                image_forward_outs = self.vision_tower(images, output_hidden_states=True)
+            
+            image_forward_outs_cont = self.con_vision_tower(images, prompts, output_hidden_states=True)
 
         return image_forward_outs, image_forward_outs_cont
 
     def feature_select(self, image_forward_outs, image_forward_outs_cont=None):
-        image_features = image_forward_outs.hidden_states[self.select_layer]
-        image_features_cont = image_forward_outs_cont.hidden_states[self.select_layer]
-        if self.select_feature == 'patch':
-            with torch.no_grad():
-                image_features = image_features[:, 1:]
+        with autocast():
+            image_features = image_forward_outs.hidden_states[self.select_layer]
+            image_features_cont = image_forward_outs_cont.hidden_states[self.select_layer]
+            if self.select_feature == 'patch':
+                with torch.no_grad():
+                    image_features = image_features[:, 1:]
 
-            image_features_cont = image_features_cont[:, 1:]
-            B, L, D = image_features_cont.shape
-            image_features_cont = torch.cat([image_features, image_features_cont], dim=-1)
-            image_features = self.zero_model(image_features_cont)
+                image_features_cont = image_features_cont[:, 1:]
+                B, L, D = image_features_cont.shape
+                image_features_cont = torch.cat([image_features, image_features_cont], dim=-1)
+                image_features = self.zero_model(image_features_cont)
 
-        elif self.select_feature == 'cls_patch':
-            image_features = image_features
-        else:
-            raise ValueError(f'Unexpected select feature: {self.select_feature}')
+            elif self.select_feature == 'cls_patch':
+                image_features = image_features
+            else:
+                raise ValueError(f'Unexpected select feature: {self.select_feature}')
         return image_features
 
     # @torch.no_grad()
@@ -120,7 +123,7 @@ class CLIPVisionTower(nn.Module):
                 # image_forward_out = self.vision_tower(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True)
                 # image_feature = self.feature_select(image_forward_out).to(image.dtype)
 
-                image_forward_outs, image_forward_outs_cont = self.forward_features(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), prompt_features)
+                image_forward_outs, image_forward_outs_cont = self.forward_features(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), prompt_features.to(device=self.device, dtype=self.dtype))
                 image_feature = self.feature_select(image_forward_outs, image_forward_outs_cont).to(images.dtype)
 
                 image_features.append(image_feature)
@@ -128,7 +131,7 @@ class CLIPVisionTower(nn.Module):
             # image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True)
             # image_features = self.feature_select(image_forward_outs).to(images.dtype)
         
-            image_forward_outs, image_forward_outs_cont = self.forward_features(images.to(device=self.device, dtype=self.dtype), prompt_features)
+            image_forward_outs, image_forward_outs_cont = self.forward_features(images.to(device=self.device, dtype=self.dtype), prompt_features.to(device=self.device, dtype=self.dtype))
             image_features = self.feature_select(image_forward_outs, image_forward_outs_cont).to(images.dtype)
 
 
