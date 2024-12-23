@@ -134,19 +134,19 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         else:
             inputs_embeds = self.get_model().embed_tokens(inputs)
 
-        import time 
-        print("inputs_embeds:", inputs_embeds.size())
-        print("attention_mask:", attention_mask)
-        print("position_ids:", position_ids)
-        start_time = time.time()
+        # import time 
+        # print("inputs_embeds:", inputs_embeds.size())
+        # print("attention_mask:", attention_mask)
+        # print("position_ids:", position_ids)
+        # start_time = time.time()
         out_response = super().generate(
             position_ids=position_ids,
             attention_mask=attention_mask,
             inputs_embeds=inputs_embeds,
             **kwargs
         )
-        end_time = time.time()
-        print(f"run time: {end_time - start_time:.6f} s")
+        # end_time = time.time()
+        # print(f"run time: {end_time - start_time:.6f} s")
         return out_response
 
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None,
