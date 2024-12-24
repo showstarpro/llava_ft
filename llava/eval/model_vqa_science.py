@@ -71,10 +71,10 @@ def eval_model(args):
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
 
-        # conv_prompt = conversation_lib.conv_vicuna_v1_prompt.copy()
-        # conv_prompt.append_message(conv_prompt.roles[0], question['value'].replace('<image>', '').strip())
-        # conversations_prompt = conv_prompt.get_prompt()
-        # prompt_input_ids = tokenizer_prompt_token(conversations_prompt, prompt_tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
+        conv_prompt = conversation_lib.conv_vicuna_v1_prompt.copy()
+        conv_prompt.append_message(conv_prompt.roles[0], question['value'].replace('<image>', '').strip())
+        conversations_prompt = conv_prompt.get_prompt()
+        prompt_input_ids = tokenizer_prompt_token(conversations_prompt, prompt_tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
 
         input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
 
