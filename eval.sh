@@ -1,22 +1,19 @@
 #!/bin/bash
-pth=/lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitl-336-control-v4/llava-1.5-7b
+pth=/lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitl-336-control-v13
 
-SPLIT="mmbench_dev_cn_20231003"
-
-python -m llava.eval.model_vqa_mmbench \
+python -m llava.eval.model_vqa_science \
     --model-path $pth \
-    --question-file ./playground/data/eval/mmbench_cn/$SPLIT.tsv \
-    --answers-file ./playground/data/eval/mmbench_cn/answers/$SPLIT/llava-v1.5-7b-clip-vitl-336-control-v4.jsonl \
-    --lang cn \
+    --question-file ./playground/data/eval/scienceqa/llava_test_CQM-A.json \
+    --image-folder ./playground/data/eval/scienceqa/images/test \
+    --answers-file ./playground/data/eval/scienceqa/answers/llava-v1.5-7b-clip-vitl-336-control-v13p.jsonl \
     --single-pred-prompt \
     --temperature 0 \
     --conv-mode vicuna_v1
 
-mkdir -p playground/data/eval/mmbench/answers_upload/$SPLIT
+python llava/eval/eval_science_qa.py \
+    --base-dir ./playground/data/eval/scienceqa \
+    --result-file ./playground/data/eval/scienceqa/answers/llava-v1.5-7b-clip-vitl-336-control-v13p.jsonl \
+    --output-file ./playground/data/eval/scienceqa/answers/llava-v1.5-7b-clip-vitl-336-control-v13p_output.jsonl \
+    --output-result ./playground/data/eval/scienceqa/answers/llava-v1.5-7b-clip-vitl-336-control-v13p_result.json
 
-python scripts/convert_mmbench_for_submission.py \
-    --annotation-file ./playground/data/eval/mmbench_cn/$SPLIT.tsv \
-    --result-dir ./playground/data/eval/mmbench_cn/answers/$SPLIT \
-    --upload-dir ./playground/data/eval/mmbench_cn/answers_upload/$SPLIT \
-    --experiment llava-v1.5-7b-clip-vitl-336-control-v4
 
