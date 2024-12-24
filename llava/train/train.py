@@ -191,6 +191,7 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
         vision_tower = trainer.model.model.vision_tower.vision_tower
         vision_tower = copy.deepcopy(vision_tower)
         vision_tower.save_pretrained(output_dir+"/vision_tower")
+        trainer.model.model.vision_tower.image_processor.save_pretrained(output_dir+"/vision_tower")
 
         output_dir = output_dir+'/checkpoint'
         # Only save Adapter
