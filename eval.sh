@@ -1,21 +1,17 @@
-pth=/lpai/volumes/so-volume-ga/models/llava-v1.5-7b
+pth=/lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitl-336-ft1
 
-SPLIT="mmbench_dev_cn_20231003"
-
-python -m llava.eval.model_vqa_mmbench \
+python -m llava.eval.model_vqa \
     --model-path $pth \
-    --question-file ./playground/data/eval/mmbench_cn/$SPLIT.tsv \
-    --answers-file ./playground/data/eval/mmbench_cn/answers/$SPLIT/llava-v1.5-7b.jsonl \
-    --lang cn \
-    --single-pred-prompt \
+    --question-file ./playground/data/eval/mm-vet/llava-mm-vet.jsonl \
+    --image-folder ./playground/data/eval/mm-vet/images \
+    --answers-file ./playground/data/eval/mm-vet/answers/llava-v1.5-7b-clip-vitl-336-ft1.jsonl \
     --temperature 0 \
     --conv-mode vicuna_v1
 
-mkdir -p playground/data/eval/mmbench/answers_upload/$SPLIT
+mkdir -p ./playground/data/eval/mm-vet/results
 
-python scripts/convert_mmbench_for_submission.py \
-    --annotation-file ./playground/data/eval/mmbench_cn/$SPLIT.tsv \
-    --result-dir ./playground/data/eval/mmbench_cn/answers/$SPLIT \
-    --upload-dir ./playground/data/eval/mmbench_cn/answers_upload/$SPLIT \
-    --experiment llava-v1.5-7b
+python scripts/convert_mmvet_for_eval.py \
+    --src ./playground/data/eval/mm-vet/answers/llava-v1.5-7b-clip-vitl-336-ft1.jsonl \
+    --dst ./playground/data/eval/mm-vet/results/llava-v1.5-7b-clip-vitl-336-ft1.json
+
 

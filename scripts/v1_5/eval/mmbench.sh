@@ -3,9 +3,9 @@
 SPLIT="mmbench_dev_20230712"
 
 python -m llava.eval.model_vqa_mmbench \
-    --model-path liuhaotian/llava-v1.5-13b \
+    --model-path /lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitl-336-ft1 \
     --question-file ./playground/data/eval/mmbench/$SPLIT.tsv \
-    --answers-file ./playground/data/eval/mmbench/answers/$SPLIT/llava-v1.5-13b.jsonl \
+    --answers-file ./playground/data/eval/mmbench/answers/$SPLIT/llava-v1.5-7b-clip-vitl-336-ft1.jsonl \
     --single-pred-prompt \
     --temperature 0 \
     --conv-mode vicuna_v1
@@ -16,4 +16,4 @@ python scripts/convert_mmbench_for_submission.py \
     --annotation-file ./playground/data/eval/mmbench/$SPLIT.tsv \
     --result-dir ./playground/data/eval/mmbench/answers/$SPLIT \
     --upload-dir ./playground/data/eval/mmbench/answers_upload/$SPLIT \
-    --experiment llava-v1.5-13b
+    --experiment llava-v1.5-7b-clip-vitl-336-ft1
