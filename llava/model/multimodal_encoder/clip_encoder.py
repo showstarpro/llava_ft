@@ -68,42 +68,42 @@ class CLIPVisionTower(nn.Module):
         
         # here load the vision encoder, can change this 
         self.image_processor = CLIPImageProcessor.from_pretrained(self.vision_tower_name)
-        self.vision_tower = CLIPVisionModel.from_pretrained(self.vision_tower_name, device_map=device_map)
-        self.vision_tower.requires_grad_(False)
-        self.vision_tower.to(self.device)
+        # self.vision_tower = CLIPVisionModel.from_pretrained(self.vision_tower_name, device_map=device_map)
+        # self.vision_tower.requires_grad_(False)
+        # self.vision_tower.to(self.device)
 
 
         ### add dit block for  control #########
         
         self.text_tower.requires_grad_(False)
-        self.text_tower.to(self.vision_tower.device)
-        self.con_vision_tower.to(self.vision_tower.device)
-        self.zero_model.to(self.vision_tower.device)
-        self.projector.to(self.vision_tower.device)
+        self.text_tower.to(device_map)
+        self.con_vision_tower.to(device_map)
+        self.zero_model.to(device_map)
+        self.projector.to(device_map)
 
         ########################################
 
         self.is_loaded = True
 
     def forward_features(self, images, prompts=None):
-        with torch.no_grad():
-            image_forward_outs = self.vision_tower(images, output_hidden_states=True)
+        # with torch.no_grad():
+        #     image_forward_outs = self.vision_tower(images, output_hidden_states=True)
         
         image_forward_outs_cont = self.con_vision_tower(images, prompts, output_hidden_states=True)
 
-        return image_forward_outs, image_forward_outs_cont
+        return image_forward_outs_cont
 
-    def feature_select(self, image_forward_outs, image_forward_outs_cont=None):
-        image_features = image_forward_outs.hidden_states[self.select_layer]
+    def feature_select(self, image_forward_outs_cont=None):
+        # image_features = image_forward_outs.hidden_states[self.select_layer]
         image_features_cont = image_forward_outs_cont.hidden_states[self.select_layer]
         if self.select_feature == 'patch':
-            with torch.no_grad():
-                image_features = image_features[:, 1:]
+            # with torch.no_grad():
+            #     image_features = image_features[:, 1:]
 
-            image_features_cont = image_features_cont[:, 1:]
-            B, L, D = image_features_cont.shape
-            image_features_cont = self.zero_model(image_features_cont)
-            image_features = image_features + image_features_cont
+            image_features = image_features_cont[:, 1:]
+            # B, L, D = image_features_cont.shape
+            # image_features_cont = self.zero_model(image_features_cont)
+            # image_features = image_features_cont
 
         elif self.select_feature == 'cls_patch':
             image_features = image_features
@@ -115,8 +115,8 @@ class CLIPVisionTower(nn.Module):
     def forward(self, images, prompt=None):
         ### add prompt for control
         with torch.no_grad():
-                prompt = prompt.to(self.vision_tower.device)
-                self.text_tower = self.text_tower.to(self.vision_tower.device)
+                prompt = prompt.to(self.con_vision_tower.device)
+                self.text_tower = self.text_tower.to(self.con_vision_tower.device)
                 prompt_features = self.text_tower(prompt)
         prompt_features = self.projector(prompt_features.pooler_output)
 
@@ -126,16 +126,16 @@ class CLIPVisionTower(nn.Module):
                 # image_forward_out = self.vision_tower(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True)
                 # image_feature = self.feature_select(image_forward_out).to(image.dtype)
 
-                image_forward_outs, image_forward_outs_cont = self.forward_features(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), prompt_features)
-                image_feature = self.feature_select(image_forward_outs, image_forward_outs_cont).to(images.dtype)
+                image_forward_outs_cont = self.forward_features(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), prompt_features)
+                image_feature = self.feature_select(image_forward_outs_cont).to(images.dtype)
 
                 image_features.append(image_feature)
         else:
             # image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True)
             # image_features = self.feature_select(image_forward_outs).to(images.dtype)
         
-            image_forward_outs, image_forward_outs_cont = self.forward_features(images.to(device=self.device, dtype=self.dtype), prompt_features)
-            image_features = self.feature_select(image_forward_outs, image_forward_outs_cont).to(images.dtype)
+            image_forward_outs_cont = self.forward_features(images.to(device=self.device, dtype=self.dtype), prompt_features)
+            image_features = self.feature_select(image_forward_outs_cont).to(images.dtype)
 
 
         return image_features
@@ -146,16 +146,16 @@ class CLIPVisionTower(nn.Module):
 
     @property
     def dtype(self):
-        return self.vision_tower.dtype
+        return self.con_vision_tower.dtype
 
     @property
     def device(self):
-        return self.vision_tower.device
+        return self.con_vision_tower.device
 
     @property
     def config(self):
         if self.is_loaded:
-            return self.vision_tower.config
+            return self.con_vision_tower.config
         else:
             return self.cfg_only
 
