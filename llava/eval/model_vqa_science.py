@@ -47,6 +47,8 @@ def eval_model(args):
         question = line['conversations'][0]
         qs = question['value'].replace('<image>', '').strip()
         cur_prompt = qs
+        prompt_qs = qs.split('\n')[0]
+        prompt_input_ids = prompt_tokenizer(prompt_qs)
 
         if 'image' in line:
             image_file = line["image"]
@@ -105,11 +107,19 @@ def eval_model(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+<<<<<<< HEAD
     parser.add_argument("--model-path", type=str, default="/lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitl-336-control-v12")
     parser.add_argument("--model-base", type=str, default=None)
     parser.add_argument("--image-folder", type=str, default="/lpai/LLaVA/playground/data/eval/scienceqa/images/test")
     parser.add_argument("--question-file", type=str, default="/lpai/LLaVA/playground/data/eval/scienceqa/llava_test_CQM-A.json")
     parser.add_argument("--answers-file", type=str, default="/lpai/LLaVA/playground/data/eval/scienceqa/llava-v1.5-7b-clip-vitl-336-control-v12.jsonl")
+=======
+    parser.add_argument("--model-path", type=str, default="/lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitl-336-control-v3/llava-1.5-7b")
+    parser.add_argument("--model-base", type=str, default=None)
+    parser.add_argument("--image-folder", type=str, default="/lpai/LLaVA/playground/data/eval/scienceqa/images/test")
+    parser.add_argument("--question-file", type=str, default="/lpai/LLaVA/playground/data/eval/scienceqa/llava_test_CQM-A.json")
+    parser.add_argument("--answers-file", type=str, default="/lpai/LLaVA/playground/data/eval/scienceqa/llava-v1.5-7b-clip-vitl-336-control-v3.jsonl")
+>>>>>>> 8f470d22f3dbeab27bae35d2191d181fc7fa9b19
     parser.add_argument("--conv-mode", type=str, default="vicuna_v1")
     parser.add_argument("--num-chunks", type=int, default=1)
     parser.add_argument("--chunk-idx", type=int, default=0)
