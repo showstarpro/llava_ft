@@ -33,13 +33,50 @@
 #     --lazy_preprocess True
 
 deepspeed llava/train/train_mem.py \
+    --deepspeed ./scripts/zero2.json \
+    --model_name_or_path /lpai/volumes/so-volume-ga/models/vicuna-7b-v1.5 \
+    --version plain \
+    --data_path /lpai/dataset/llava-pre/0-1-0/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json \
+    --image_folder /lpai/dataset/llava-pre/0-1-0/LLaVA-Pretrain/images \
+    --vision_tower /lpai/volumes/so-volume-ga/models/clip-vit-large-patch14-336 \
+    --mm_projector_type mlp2x_gelu \
+    --tune_mm_mlp_adapter True \
+    --mm_vision_select_layer -2 \
+    --mm_use_im_start_end False \
+    --mm_use_im_patch_token False \
+    --bf16 True \
+    --output_dir /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_v21 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 32 \
+    --per_device_eval_batch_size 4 \
+    --gradient_accumulation_steps 1 \
+    --evaluation_strategy "no" \
+    --save_strategy "steps" \
+    --save_steps 24000 \
+    --save_total_limit 1 \
+    --learning_rate 3e-4 \
+    --weight_decay 0. \
+    --warmup_ratio 0.03 \
+    --lr_scheduler_type "cosine" \
+    --logging_steps 1 \
+    --tf32 True \
+    --model_max_length 2048 \
+    --gradient_checkpointing True \
+    --dataloader_num_workers 4 \
+    --lazy_preprocess True
+
+deepspeed llava/train/train_mem.py \
     --deepspeed ./scripts/zero3.json \
     --model_name_or_path /lpai/volumes/so-volume-ga/models/vicuna-7b-v1.5 \
     --version v1 \
     --data_path /lpai/dataset/llava-ft/0-1-4/llava_ft/llava_v1_5_mix665k.json \
     --image_folder /lpai/dataset/llava-ft/0-1-4/llava_ft/data \
     --vision_tower /lpai/volumes/so-volume-ga/models/clip-vit-large-patch14-336 \
+<<<<<<< HEAD
     --pretrain_mm_mlp_adapter /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_v22/llava-1.5-7b/mm_projector.bin \
+=======
+    --pretrain_mm_mlp_adapter /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_v21/llava-1.5-7b/mm_projector.bin \
+>>>>>>> dad9a478319cedee7f1465ae3a14ca84fcc74362
     --mm_projector_type mlp2x_gelu \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
@@ -47,7 +84,11 @@ deepspeed llava/train/train_mem.py \
     --image_aspect_ratio pad \
     --group_by_modality_length True \
     --bf16 True \
+<<<<<<< HEAD
     --output_dir /lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitl-336-control-v22 \
+=======
+    --output_dir /lpai/volumes/so-volume-ga/lhp/llava-v1.5/vicuna-7b-v1.5-pretrain/llava-v1.5-7b-clip-vitl-336-control-v21 \
+>>>>>>> dad9a478319cedee7f1465ae3a14ca84fcc74362
     --num_train_epochs 1 \
     --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 4 \
@@ -65,7 +106,13 @@ deepspeed llava/train/train_mem.py \
     --model_max_length 2048 \
     --gradient_checkpointing True \
     --dataloader_num_workers 4 \
+<<<<<<< HEAD
 	--vision_tower_contr /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_v22/con_vision_tower \
     --projector_contr /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_v22/checkpoint/projector.pth \
     --zero_model /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_v22/checkpoint/zero_model.pth \
+=======
+	--vision_tower_contr /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_v21/con_vision_tower \
+    --projector_contr /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_v21/checkpoint/projector.pth \
+    --zero_model /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_v21/checkpoint/zero_model.pth \
+>>>>>>> dad9a478319cedee7f1465ae3a14ca84fcc74362
     --lazy_preprocess True
