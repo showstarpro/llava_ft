@@ -76,10 +76,10 @@ class CLIPVisionTower(nn.Module):
         ### add dit block for  control #########
         
         self.text_tower.requires_grad_(False)
-        self.text_tower.to(device_map)
-        self.con_vision_tower.to(device_map)
-        self.zero_model.to(device_map)
-        self.projector.to(device_map)
+        self.text_tower.to(self.con_vision_tower.device)
+        self.con_vision_tower.to(self.con_vision_tower.device)
+        self.zero_model.to(self.con_vision_tower.device)
+        self.projector.to(self.con_vision_tower.device)
 
         ########################################
 
