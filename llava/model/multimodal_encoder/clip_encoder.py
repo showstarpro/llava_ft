@@ -20,6 +20,7 @@ import importlib
 
 from .control_encoder import DiTVisionModel, conv_nd, zero_module
 import math
+from .clip_qavit import InstructCLIPVisionModel
 
 class CLIPVisionTower(nn.Module):
     def __init__(self, vision_tower, vision_tower_contr, projector_contr, zero_model, args, delay_load=False):
@@ -35,25 +36,14 @@ class CLIPVisionTower(nn.Module):
         self.projector_contr_name = projector_contr
         self.zero_model_name = zero_model
 
-        ########### new model #############
-        self.text_tower = CLIPTextModel.from_pretrained(self.vision_tower_name)
 
-        ### new control vision model
-        self.con_vision_tower = DiTVisionModel.from_pretrained(self.vision_tower_contr_name)
-        dims = self.con_vision_tower.vision_model.encoder.layers[-1].mlp.fc2.out_features
-        self.zero_model = nn.Sequential(nn.LayerNorm(dims), zero_module(nn.Linear(dims, dims))).to(self.con_vision_tower.device) ###  zero-linear
-        if self.zero_model_name is not None:
-            zero_model_weights = torch.load(self.zero_model_name, map_location='cpu')
-            self.zero_model.load_state_dict(zero_model_weights)
-
-        transformer_width = self.text_tower.text_model.encoder.layers[-1].mlp.fc2.out_features
-        ##  add nrom for text embeddings 
-        self.projector = nn.Sequential(nn.Linear(transformer_width, dims, bias=True), nn.LayerNorm(dims)).to(self.con_vision_tower.device)
-        if self.projector_contr_name is not None:
-            projector_contr_weights = torch.load(self.projector_contr_name, map_location='cpu')
-
-            self.projector.load_state_dict(projector_contr_weights)
+     
         ###############################
+        
+        ### add for qa-vit
+        self.instruction_embedder = None
+        self.instruction_dim = 768
+        self.integration_point= 'late'
 
         if not delay_load:
             self.load_model()
@@ -69,38 +59,41 @@ class CLIPVisionTower(nn.Module):
         
         # here load the vision encoder, can change this 
         self.image_processor = CLIPImageProcessor.from_pretrained(self.vision_tower_name)
-        self.vision_tower = CLIPVisionModel.from_pretrained(self.vision_tower_name, device_map=device_map)
-        self.vision_tower.requires_grad_(False)
 
+        config = CLIPVisionConfig.from_pretrained(self.vision_tower_name)
+        self.vision_tower = InstructCLIPVisionModel(config=config, instruction_dim=self.instruction_dim,
+                                                    integration_point=self.integration_point)
+        pretrained_dict = CLIPVisionModel.from_pretrained(self.vision_tower_name).state_dict()
+        missing, unexpected = self.vision_tower.load_state_dict(pretrained_dict, strict=False)
+        self.vision_tower = self.vision_tower.to(self.device)
+        assert len(unexpected) == 0     # asserts that loading weights was as expected
+        self.vision_tower.init_qavit_comps()
+        if self.vision_tower is not None:
+            for name, param in self.vision_tower.named_parameters():
+                if 'instruct' not in name:  # qa-vit components are named with instruct and are trainables
+                    param.requires_grad = False
 
-        ### add dit block for  control #########
+        ### add for qa-vit #########
         
-        self.text_tower.requires_grad_(False)
+        text_tower = CLIPTextModel.from_pretrained(self.vision_tower_name)
+        self.instruction_embedder = text_tower.text_model.embeddings.token_embedding.to(self.device)
+        self.instruction_dim = self.instruction_embedder.weight.shape[-1]
 
         ########################################
 
         self.is_loaded = True
 
     def forward_features(self, images, prompts=None):
-        with torch.no_grad():
-            image_forward_outs = self.vision_tower(images, output_hidden_states=True)
         
-        image_forward_outs_cont = self.con_vision_tower(images, prompts, output_hidden_states=True)
+        image_forward_outs = self.vision_tower(pixel_values=images, output_hidden_states=True, instruct_states=prompts)
 
-        return image_forward_outs, image_forward_outs_cont
+        return image_forward_outs
 
-    def feature_select(self, image_forward_outs, image_forward_outs_cont=None):
+    def feature_select(self, image_forward_outs):
         image_features = image_forward_outs.hidden_states[self.select_layer]
-        image_features_cont = image_forward_outs_cont.hidden_states[self.select_layer]
         if self.select_feature == 'patch':
             with torch.no_grad():
                 image_features = image_features[:, 1:]
-
-            image_features_cont = image_features_cont[:, 1:]
-            B, L, D = image_features_cont.shape
-            image_features_cont = self.zero_model(image_features_cont)
-            image_features = image_features + image_features_cont
-
         elif self.select_feature == 'cls_patch':
             image_features = image_features
         else:
@@ -112,17 +105,7 @@ class CLIPVisionTower(nn.Module):
         ### add prompt for control
         with torch.no_grad():
                 prompt = prompt.to(device=self.device)
-                prompt_features = self.text_tower(prompt, output_hidden_states=True)
-                prompt_features = prompt_features.hidden_states[self.select_layer]
-                prompt_features = prompt_features[
-                torch.arange(prompt_features.shape[0], device=prompt_features.device),
-                # We need to get the first position of `eos_token_id` value (`pad_token_ids` might equal to `eos_token_id`)
-                (prompt.to(dtype=torch.int, device=prompt_features.device) == self.text_tower.text_model.eos_token_id)
-                .int()
-                .argmax(dim=-1),
-            ]
-
-        prompt_features = self.projector(prompt_features)
+                prompt_features = self.instruction_embedder(prompt)                
 
         if type(images) is list:
             image_features = []
@@ -130,16 +113,16 @@ class CLIPVisionTower(nn.Module):
                 # image_forward_out = self.vision_tower(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True)
                 # image_feature = self.feature_select(image_forward_out).to(image.dtype)
 
-                image_forward_outs, image_forward_outs_cont = self.forward_features(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), prompt_features)
-                image_feature = self.feature_select(image_forward_outs, image_forward_outs_cont).to(images.dtype)
+                image_forward_outs = self.forward_features(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), prompt_features)
+                image_feature = self.feature_select(image_forward_outs).to(images.dtype)
 
                 image_features.append(image_feature)
         else:
             # image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True)
             # image_features = self.feature_select(image_forward_outs).to(images.dtype)
         
-            image_forward_outs, image_forward_outs_cont = self.forward_features(images.to(device=self.device, dtype=self.dtype), prompt_features)
-            image_features = self.feature_select(image_forward_outs, image_forward_outs_cont).to(images.dtype)
+            image_forward_outs = self.forward_features(images.to(device=self.device, dtype=self.dtype), prompt_features)
+            image_features = self.feature_select(image_forward_outs).to(images.dtype)
 
 
         return image_features

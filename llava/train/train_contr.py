@@ -1036,13 +1036,11 @@ def train(attn_implementation=None):
             model.requires_grad_(False)
             for p in model.get_model().mm_projector.parameters():
                 p.requires_grad = True
-        # if  model_args.tune_mm_contr:
-            for p in model.get_model().vision_tower.con_vision_tower.parameters():
-                p.requires_grad = True
-            for p in model.get_model().vision_tower.projector.parameters():
-                p.requires_grad = True
-            for p in model.get_model().vision_tower.zero_model.parameters():
-                p.requires_grad = True
+        # if  train for qa-vit:
+            model.get_model().vision_tower.vision_tower.requires_grad_(True)
+            for name, param in model.get_model().vision_tower.vision_tower.named_parameters():
+                if 'instruct' not in name:  # qa-vit components are named with instruct and are trainables
+                    param.requires_grad = False
 
         model.config.freeze_mm_mlp_adapter = training_args.freeze_mm_mlp_adapter
         if training_args.freeze_mm_mlp_adapter:
