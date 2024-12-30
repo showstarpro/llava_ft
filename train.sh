@@ -1,36 +1,36 @@
 
-deepspeed llava/train/train_mem.py \
-    --deepspeed ./scripts/zero2.json \
-    --model_name_or_path /lpai/volumes/so-volume-ga/models/vicuna-7b-v1.5 \
-    --version plain \
-    --data_path /lpai/dataset/llava-pre/0-1-0/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json \
-    --image_folder /lpai/dataset/llava-pre/0-1-0/LLaVA-Pretrain/images \
-    --vision_tower /lpai/volumes/so-volume-ga/models/clip-vit-large-patch14-336 \
-    --mm_projector_type mlp2x_gelu \
-    --tune_mm_mlp_adapter True \
-    --mm_vision_select_layer -2 \
-    --mm_use_im_start_end False \
-    --mm_use_im_patch_token False \
-    --bf16 True \
-    --output_dir /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_qa_vit \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 32 \
-    --per_device_eval_batch_size 4 \
-    --gradient_accumulation_steps 1 \
-    --evaluation_strategy "no" \
-    --save_strategy "steps" \
-    --save_steps 24000 \
-    --save_total_limit 1 \
-    --learning_rate 3e-4 \
-    --weight_decay 0. \
-    --warmup_ratio 0.03 \
-    --lr_scheduler_type "cosine" \
-    --logging_steps 1 \
-    --tf32 True \
-    --model_max_length 2048 \
-    --gradient_checkpointing True \
-    --dataloader_num_workers 4 \
-    --lazy_preprocess True
+# deepspeed llava/train/train_mem.py \
+#     --deepspeed ./scripts/zero2.json \
+#     --model_name_or_path /lpai/volumes/so-volume-ga/models/vicuna-7b-v1.5 \
+#     --version plain \
+#     --data_path /lpai/dataset/llava-pre/0-1-0/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json \
+#     --image_folder /lpai/dataset/llava-pre/0-1-0/LLaVA-Pretrain/images \
+#     --vision_tower /lpai/volumes/so-volume-ga/models/clip-vit-large-patch14-336 \
+#     --mm_projector_type mlp2x_gelu \
+#     --tune_mm_mlp_adapter True \
+#     --mm_vision_select_layer -2 \
+#     --mm_use_im_start_end False \
+#     --mm_use_im_patch_token False \
+#     --bf16 True \
+#     --output_dir /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_qa_vit \
+#     --num_train_epochs 1 \
+#     --per_device_train_batch_size 32 \
+#     --per_device_eval_batch_size 4 \
+#     --gradient_accumulation_steps 1 \
+#     --evaluation_strategy "no" \
+#     --save_strategy "steps" \
+#     --save_steps 24000 \
+#     --save_total_limit 1 \
+#     --learning_rate 2e-3 \
+#     --weight_decay 0. \
+#     --warmup_ratio 0.03 \
+#     --lr_scheduler_type "cosine" \
+#     --logging_steps 1 \
+#     --tf32 True \
+#     --model_max_length 2048 \
+#     --gradient_checkpointing True \
+#     --dataloader_num_workers 4 \
+#     --lazy_preprocess True
 
 deepspeed llava/train/train_mem.py \
     --deepspeed ./scripts/zero3.json \
@@ -65,7 +65,5 @@ deepspeed llava/train/train_mem.py \
     --model_max_length 2048 \
     --gradient_checkpointing True \
     --dataloader_num_workers 4 \
-	--vision_tower_contr /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_qa_vit/con_vision_tower \
-    --projector_contr /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_qa_vit/checkpoint/projector.pth \
-    --zero_model /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_qa_vit/checkpoint/zero_model.pth \
-    --lazy_preprocess True
+    --lazy_preprocess True \
+    --vision_tower_contr /lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_qa_vit/vision_tower

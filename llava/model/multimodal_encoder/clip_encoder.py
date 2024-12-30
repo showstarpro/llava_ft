@@ -44,6 +44,10 @@ class CLIPVisionTower(nn.Module):
         self.instruction_embedder = None
         self.instruction_dim = 768
         self.integration_point= 'late'
+        
+        config = CLIPVisionConfig.from_pretrained(self.vision_tower_contr_name)
+        self.vision_tower = InstructCLIPVisionModel(config=config, instruction_dim=self.instruction_dim,
+                                                    integration_point=self.integration_point)
 
         if not delay_load:
             self.load_model()
@@ -58,12 +62,12 @@ class CLIPVisionTower(nn.Module):
             return
         
         # here load the vision encoder, can change this 
-        self.image_processor = CLIPImageProcessor.from_pretrained(self.vision_tower_name)
+        self.image_processor = CLIPImageProcessor.from_pretrained('/lpai/volumes/so-volume-ga/models/clip-vit-large-patch14-336')
 
-        config = CLIPVisionConfig.from_pretrained(self.vision_tower_name)
-        self.vision_tower = InstructCLIPVisionModel(config=config, instruction_dim=self.instruction_dim,
-                                                    integration_point=self.integration_point)
-        pretrained_dict = CLIPVisionModel.from_pretrained(self.vision_tower_name).state_dict()
+
+        # pretrained_dict = CLIPVisionModel.from_pretrained(self.vision_tower_name).state_dict()
+        from safetensors.torch import load_file
+        pretrained_dict = load_file('/lpai/volumes/so-volume-ga/lhp/vicuna-7b-v1.5-pretrain/clip_vitl_336_control_qa_vit/vision_tower/model.safetensors')
         missing, unexpected = self.vision_tower.load_state_dict(pretrained_dict, strict=False)
         self.vision_tower = self.vision_tower.to(self.device)
         assert len(unexpected) == 0     # asserts that loading weights was as expected
