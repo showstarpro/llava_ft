@@ -48,7 +48,7 @@ class CLIPVisionTower(nn.Module):
 
         transformer_width = self.text_tower.text_model.encoder.layers[-1].mlp.fc2.out_features
         ##  add nrom for text embeddings 
-        self.projector = nn.Sequential(nn.Linear(transformer_width, dims, bias=True), nn.LayerNorm(dims)).to(self.con_vision_tower.device)
+        self.projector = nn.Sequential(nn.LayerNorm(transformer_width), nn.Linear(transformer_width, dims, bias=True), nn.LayerNorm(dims)).to(self.con_vision_tower.device)
         if self.projector_contr_name is not None:
             projector_contr_weights = torch.load(self.projector_contr_name, map_location='cpu')
 
