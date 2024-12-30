@@ -193,22 +193,23 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
 
     if getattr(trainer.args, "tune_mm_mlp_adapter", False):
         #### save con_vision_tower
-        con_vision_tower = trainer.model.model.vision_tower.con_vision_tower
-        # if isinstance(con_vision_tower, ZeROOrderedDict):
-        #     print("con_vision_tower 是 ZeROOrderedDict 类型")
-        #     con_vision_tower = ZeROOrderedDict(parent_module=trainer.model.model.vision_tower.con_vision_tower)
-        con_vision_tower = copy.deepcopy(con_vision_tower)
-        con_vision_tower.save_pretrained(output_dir+"/con_vision_tower")
+        if trainer.args.local_rank == 0 or trainer.args.local_rank == -1:
+            con_vision_tower = trainer.model.model.vision_tower.con_vision_tower
+            # if isinstance(con_vision_tower, ZeROOrderedDict):
+            #     print("con_vision_tower 是 ZeROOrderedDict 类型")
+            #     con_vision_tower = ZeROOrderedDict(parent_module=trainer.model.model.vision_tower.con_vision_tower)
+            con_vision_tower = copy.deepcopy(con_vision_tower)
+            con_vision_tower.save_pretrained(output_dir+"/con_vision_tower")
 
-        #### save projector
-        checkpoint_dir = output_dir+'/checkpoint'
-        if not os.path.exists(checkpoint_dir):
-            # 如果目录不存在，创建目录
-            os.makedirs(checkpoint_dir)
-        torch.save(trainer.model.model.vision_tower.projector.state_dict(), os.path.join(checkpoint_dir, 'projector.pth'))
+            #### save projector
+            checkpoint_dir = output_dir+'/checkpoint'
+            if not os.path.exists(checkpoint_dir):
+                # 如果目录不存在，创建目录
+                os.makedirs(checkpoint_dir)
+            torch.save(trainer.model.model.vision_tower.projector.state_dict(), os.path.join(checkpoint_dir, 'projector.pth'))
 
-        #### save zero_model os.path.join(checkpoint_dir, 'zero_model.pth')
-        torch.save(trainer.model.model.vision_tower.zero_model.state_dict(), os.path.join(checkpoint_dir, 'zero_model.pth'))
+            #### save zero_model os.path.join(checkpoint_dir, 'zero_model.pth')
+            torch.save(trainer.model.model.vision_tower.zero_model.state_dict(), os.path.join(checkpoint_dir, 'zero_model.pth'))
         output_dir = output_dir+'/llava-1.5-7b'
         
         # Only save Adapter
