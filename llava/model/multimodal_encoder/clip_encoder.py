@@ -48,7 +48,7 @@ class CLIPVisionTower(nn.Module):
 
         transformer_width = self.text_tower.text_model.encoder.layers[-1].mlp.fc2.out_features
         ##  add nrom for text embeddings 
-        self.projector = nn.Sequential(nn.LayerNorm(transformer_width), nn.Linear(transformer_width, dims, bias=True), nn.LayerNorm(dims)).to(self.con_vision_tower.device)
+        self.projector = nn.Sequential(nn.LayerNorm(transformer_width), nn.Linear(transformer_width, dims, bias=True)).to(self.con_vision_tower.device)
         if self.projector_contr_name is not None:
             projector_contr_weights = torch.load(self.projector_contr_name, map_location='cpu')
 
@@ -98,8 +98,13 @@ class CLIPVisionTower(nn.Module):
 
             image_features_cont = image_features_cont[:, 1:]
             B, L, D = image_features_cont.shape
-            image_features_cont = self.zero_model(image_features_cont)
-            image_features = image_features + image_features_cont
+            # image_features_cont = self.zero_model(image_features_cont)
+            
+            # Interleave features
+            merged_features = torch.empty(B, 2*L, D, dtype = image_features_cont.dtype)
+            merged_features[:, 0::2] = image_features
+            merged_features[:, 1::2] = image_features_cont
+            image_features = merged_feature
 
         elif self.select_feature == 'cls_patch':
             image_features = image_features
