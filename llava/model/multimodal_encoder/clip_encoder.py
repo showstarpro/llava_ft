@@ -48,7 +48,7 @@ class CLIPVisionTower(nn.Module):
 
         transformer_width = self.text_tower.text_model.encoder.layers[-1].mlp.fc2.out_features
         ##  add nrom for text embeddings 
-        self.projector = nn.Sequential(nn.LayerNorm(transformer_width), nn.Linear(transformer_width, dims, bias=True), nn.LayerNorm(dims)).to(self.con_vision_tower.device)
+        self.projector = nn.Sequential(nn.LayerNorm(transformer_width), nn.Linear(transformer_width, dims, bias=True)).to(self.con_vision_tower.device)
         if self.projector_contr_name is not None:
             projector_contr_weights = torch.load(self.projector_contr_name, map_location='cpu')
 
@@ -113,7 +113,7 @@ class CLIPVisionTower(nn.Module):
         with torch.no_grad():
                 prompt = prompt.to(device=self.device)
                 prompt_features = self.text_tower(prompt, output_hidden_states=True)
-                prompt_features = prompt_features.hidden_states[self.select_layer]
+                prompt_features = prompt_features.hidden_states[-1]
                 prompt_features = prompt_features[
                 torch.arange(prompt_features.shape[0], device=prompt_features.device),
                 # We need to get the first position of `eos_token_id` value (`pad_token_ids` might equal to `eos_token_id`)
