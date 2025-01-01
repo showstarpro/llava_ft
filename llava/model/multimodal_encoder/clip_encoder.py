@@ -101,10 +101,10 @@ class CLIPVisionTower(nn.Module):
             # image_features_cont = self.zero_model(image_features_cont)
             
             # Interleave features
-            merged_features = torch.empty(B, 2*L, D, dtype = image_features_cont.dtype)
+            merged_features = torch.empty(B, 2*L, D, dtype = image_features_cont.dtype).to(self.device)
             merged_features[:, 0::2] = image_features
             merged_features[:, 1::2] = image_features_cont
-            image_features = merged_feature
+            image_features = merged_features
 
         elif self.select_feature == 'cls_patch':
             image_features = image_features
