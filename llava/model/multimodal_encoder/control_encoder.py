@@ -320,16 +320,22 @@ class DiTEncoderLayer(nn.Module):
                 returned tensors for more detail.
         """
         
-        ####### DiT condition layers
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
-        #######
+        # ####### DiT condition layers
+        # shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
+        # #######
+        
+        ### token concat
+        c = c.unsqueeze(dim=1)
+        B, L, D = c.shape
+        hidden_states = torch.cat([c, hidden_states], dim=1)
+        ### 
         
         residual = hidden_states
 
         hidden_states = self.layer_norm1(hidden_states)
         
         #### aad for control
-        hidden_states = modulate(hidden_states, shift_msa, scale_msa)
+        # hidden_states = modulate(hidden_states, shift_msa, scale_msa)
         ####
         
         hidden_states, attn_weights = self.self_attn(
@@ -338,17 +344,22 @@ class DiTEncoderLayer(nn.Module):
             causal_attention_mask=causal_attention_mask,
             output_attentions=output_attentions,
         )
-        hidden_states = residual + gate_msa.unsqueeze(1) * hidden_states #### aad for control
+        hidden_states = residual + hidden_states #### aad for control
 
         residual = hidden_states
         hidden_states = self.layer_norm2(hidden_states)
         
         #### aad for control
-        hidden_states = modulate(hidden_states, shift_mlp, scale_mlp)
+        # hidden_states = modulate(hidden_states, shift_mlp, scale_mlp)
         #### 
         
         hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + gate_mlp.unsqueeze(1) * hidden_states #### aad for control
+        hidden_states = residual +  hidden_states #### aad for control
+        
+        ### token concat
+        
+        hidden_states = hidden_states[:, L:]
+        ###
 
         outputs = (hidden_states,)
 
